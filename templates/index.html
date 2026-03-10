@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>AI Autocorrect</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:       #0f1117;
+  --bg2:      #161b25;
+  --bg3:      #1d2535;
+  --bg4:      #242e42;
+  --line:     rgba(255,255,255,.07);
+  --line2:    rgba(255,255,255,.13);
+  --t1:       #e8edf5;
+  --t2:       #8b95a8;
+  --t3:       #4a556a;
+  --green:    #22c55e;
+  --green-d:  rgba(34,197,94,.1);
+  --green-g:  rgba(34,197,94,.25);
+  --red:      #ef4444;
+  --red-d:    rgba(239,68,68,.1);
+  --amber:    #f59e0b;
+  --blue:     #3b82f6;
+  --blue-d:   rgba(59,130,246,.1);
+  --r:        10px;
+  --mono: "JetBrains Mono", monospace;
+  --sans: "Inter", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--t1); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+/* ── LAYOUT ── */
+.page { max-width: 860px; margin: 0 auto; padding: 32px 20px 60px; display: flex; flex-direction: column; gap: 16px; }
+
+/* ── HEADER ── */
+.header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; background: var(--bg2); border: 1px solid var(--line2); border-radius: var(--r); }
+.header-left { display: flex; align-items: center; gap: 14px; }
+.app-icon { width: 42px; height: 42px; border-radius: 10px; background: linear-gradient(135deg, #1e3a5f, #2563eb); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+.app-name { font-size: 1.1rem; font-weight: 600; color: var(--t1); }
+.app-sub  { font-size: .72rem; color: var(--t3); font-family: var(--mono); margin-top: 1px; }
+.master-area { display: flex; align-items: center; gap: 14px; }
+.master-label { text-align: right; }
+.master-label .ml-title { font-size: .82rem; font-weight: 600; color: var(--t1); }
+.master-label .ml-sub   { font-size: .67rem; color: var(--t3); font-family: var(--mono); margin-top: 1px; }
+
+/* ── BIG TOGGLE ── */
+.big-toggle {
+  width: 64px; height: 34px; border-radius: 100px; cursor: pointer;
+  background: var(--bg4); border: 1.5px solid var(--line2);
+  position: relative; transition: all .3s cubic-bezier(.34,1.56,.64,1);
+  flex-shrink: 0;
+}
+.big-toggle::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--t3); transition: all .3s cubic-bezier(.34,1.56,.64,1);
+}
+.big-toggle.on { background: var(--green-d); border-color: rgba(34,197,94,.4); box-shadow: 0 0 0 4px rgba(34,197,94,.08); }
+.big-toggle.on::after { left: 33px; background: var(--green); box-shadow: 0 2px 8px rgba(34,197,94,.4); }
+
+/* ── STATUS BADGE ── */
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 100px; font-size: .7rem; font-weight: 600; font-family: var(--mono); }
+.badge.active { background: var(--green-d); border: 1px solid rgba(34,197,94,.25); color: var(--green); }
+.badge.active .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
+.badge.paused { background: var(--red-d); border: 1px solid rgba(239,68,68,.25); color: var(--red); }
+.badge.paused .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
+@keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.4);}50%{box-shadow:0 0 0 4px rgba(34,197,94,0);} }
+
+/* ── NOTICE BANNER ── */
+.notice {
+  background: var(--blue-d); border: 1px solid rgba(59,130,246,.25);
+  border-radius: var(--r); padding: 12px 18px;
+  display: flex; align-items: flex-start; gap: 11px;
+  font-size: .8rem; color: var(--t2); line-height: 1.55;
+}
+.notice-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+.notice strong { color: var(--t1); font-weight: 600; }
+.notice code { font-family: var(--mono); font-size: .75rem; background: rgba(59,130,246,.15); padding: 1px 6px; border-radius: 4px; color: #93c5fd; }
+
+/* ── SECTION TITLE ── */
+.section-title { font-size: .65rem; font-weight: 600; color: var(--t3); letter-spacing: .1em; text-transform: uppercase; font-family: var(--mono); padding: 4px 0 2px; }
+
+/* ── SETTINGS CARD ── */
+.card { background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.setting-row {
+  display: flex; align-items: center; padding: 15px 20px;
+  border-bottom: 1px solid var(--line); gap: 14px;
+  transition: background .12s;
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-row:hover { background: rgba(255,255,255,.02); }
+.setting-row.disabled { opacity: .38; pointer-events: none; }
+.setting-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: .9rem; flex-shrink: 0; }
+.si-green  { background: rgba(34,197,94,.1);  border: 1px solid rgba(34,197,94,.2); }
+.si-blue   { background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.2); }
+.si-amber  { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.2); }
+.si-violet { background: rgba(139,92,246,.1); border: 1px solid rgba(139,92,246,.2); }
+.si-red    { background: rgba(239,68,68,.1);  border: 1px solid rgba(239,68,68,.2); }
+.setting-text { flex: 1; min-width: 0; }
+.setting-name { font-size: .88rem; font-weight: 500; color: var(--t1); }
+.setting-desc { font-size: .72rem; color: var(--t3); margin-top: 1px; font-family: var(--mono); }
+.setting-control { flex-shrink: 0; }
+
+/* Small toggle */
+.toggle {
+  width: 44px; height: 24px; border-radius: 100px; cursor: pointer;
+  background: var(--bg4); border: 1.5px solid var(--line2);
+  position: relative; transition: all .24s cubic-bezier(.34,1.56,.64,1);
+}
+.toggle::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--t3); transition: all .24s cubic-bezier(.34,1.56,.64,1);
+}
+.toggle.on { background: var(--green-d); border-color: rgba(34,197,94,.4); }
+.toggle.on::after { left: 23px; background: var(--green); box-shadow: 0 1px 6px rgba(34,197,94,.4); }
+
+/* Select & Slider */
+.setting-select {
+  background: var(--bg3); border: 1px solid var(--line2); color: var(--t1);
+  font-family: var(--mono); font-size: .73rem; padding: 6px 10px;
+  border-radius: 6px; cursor: pointer; outline: none; transition: border-color .13s;
+}
+.setting-select:hover, .setting-select:focus { border-color: rgba(59,130,246,.4); }
+.setting-select option { background: var(--bg3); }
+.setting-slider { -webkit-appearance: none; appearance: none; width: 100px; height: 3px; border-radius: 3px; background: var(--bg4); outline: none; cursor: pointer; }
+.setting-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--blue); cursor: pointer; box-shadow: 0 0 6px rgba(59,130,246,.4); }
+.slider-val { font-family: var(--mono); font-size: .7rem; color: var(--blue); min-width: 32px; text-align: right; }
+.slider-wrap { display: flex; align-items: center; gap: 8px; }
+
+/* ── STATS GRID ── */
+.stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+.stat { background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; }
+.stat-val { font-size: 1.9rem; font-weight: 600; color: var(--t1); line-height: 1; font-family: var(--mono); letter-spacing: -.04em; }
+.stat-val.green { color: var(--green); }
+.stat-val.amber { color: var(--amber); }
+.stat-val sub { font-size: .65rem; color: var(--t3); font-weight: 400; vertical-align: middle; margin-left: 2px; }
+.stat-label { font-size: .65rem; color: var(--t3); margin-top: 5px; font-family: var(--mono); letter-spacing: .04em; }
+
+/* ── LOG ── */
+.log-scroll { max-height: 280px; overflow-y: auto; }
+.log-scroll::-webkit-scrollbar { width: 3px; }
+.log-scroll::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+.log-empty { padding: 36px 20px; text-align: center; font-size: .82rem; color: var(--t3); line-height: 2; }
+.log-empty span { display: block; font-family: var(--mono); font-size: .65rem; color: var(--t3); margin-top: 4px; opacity: .6; }
+.log-entry {
+  display: flex; align-items: center; gap: 12px; padding: 11px 20px;
+  border-bottom: 1px solid var(--line); transition: background .1s;
+  animation: slideIn .2s cubic-bezier(.16,1,.3,1);
+}
+@keyframes slideIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+.log-entry:last-child { border-bottom: none; }
+.log-entry:hover { background: rgba(255,255,255,.02); }
+.log-type { width: 24px; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: .6rem; font-weight: 700; font-family: var(--mono); flex-shrink: 0; }
+.log-type.sp { background: rgba(34,197,94,.12); color: var(--green); border: 1px solid rgba(34,197,94,.2); }
+.log-type.gr { background: rgba(59,130,246,.12); color: var(--blue); border: 1px solid rgba(59,130,246,.2); }
+.log-type.ca { background: rgba(245,158,11,.12); color: var(--amber); border: 1px solid rgba(245,158,11,.2); }
+.log-before { font-family: var(--mono); font-size: .75rem; color: var(--red); text-decoration: line-through; opacity: .7; }
+.log-arrow { color: var(--t3); font-size: .7rem; margin: 0 4px; }
+.log-after  { font-family: var(--mono); font-size: .75rem; color: var(--green); font-weight: 500; }
+.log-meta { margin-left: auto; font-family: var(--mono); font-size: .62rem; color: var(--t3); white-space: nowrap; }
+
+/* ── TESTER ── */
+.tester-wrap { padding: 16px 20px; }
+.tester-hint { font-size: .7rem; color: var(--t3); font-family: var(--mono); margin-bottom: 9px; }
+#tester {
+  width: 100%; min-height: 72px; resize: vertical;
+  background: var(--bg3); border: 1px solid var(--line2);
+  border-radius: 7px; color: var(--t1); font-family: var(--mono);
+  font-size: .85rem; line-height: 1.65; padding: 10px 14px; outline: none;
+  transition: border-color .15s;
+}
+#tester:focus { border-color: rgba(59,130,246,.45); }
+#tester::placeholder { color: var(--t3); }
+.tester-foot { display: flex; justify-content: space-between; margin-top: 7px; font-size: .65rem; color: var(--t3); font-family: var(--mono); }
+
+/* ── SHORTCUTS ── */
+.shortcut-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); }
+.sc-item { background: var(--bg2); padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; }
+.sc-label { font-size: .8rem; color: var(--t2); }
+.sc-keys { display: flex; gap: 3px; }
+.k { padding: 2px 8px; border-radius: 4px; background: var(--bg4); border: 1px solid var(--line2); font-size: .65rem; font-family: var(--mono); color: var(--t2); box-shadow: 0 2px 0 rgba(0,0,0,.3); }
+
+/* ── TOAST ── */
+.toast-area { position: fixed; bottom: 20px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; pointer-events: none; }
+.toast { display: flex; align-items: center; gap: 8px; background: var(--bg3); border: 1px solid var(--line2); border-radius: 8px; padding: 9px 15px; font-size: .75rem; font-family: var(--mono); color: var(--t2); box-shadow: 0 8px 32px rgba(0,0,0,.5); animation: tIn .22s cubic-bezier(.16,1,.3,1); min-width: 200px; }
+@keyframes tIn { from{opacity:0;transform:translateY(6px) scale(.97);}to{opacity:1;transform:none;} }
+.toast.out { animation: tOut .16s ease forwards; }
+@keyframes tOut { to{opacity:0;transform:translateY(4px) scale(.97);} }
+.t-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+.toast.ok  .t-dot { background: var(--green); }
+.toast.wrn .t-dot { background: var(--amber); }
+.toast.err .t-dot { background: var(--red); }
+
+/* ── ROW UTIL ── */
+.row { display: flex; gap: 10px; }
+.row .card { flex: 1; }
+
+@media(max-width:640px) { .stats-grid{grid-template-columns:1fr 1fr;} .row{flex-direction:column;} .shortcut-grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER with master toggle -->
+  <div class="header">
+    <div class="header-left">
+      <div class="app-icon">✏️</div>
+      <div>
+        <div class="app-name">AI Autocorrect</div>
+        <div class="app-sub">system-wide &middot; groq llama3</div>
+      </div>
+    </div>
+    <div class="master-area">
+      <div class="master-label">
+        <div class="ml-title">Master Switch</div>
+        <div class="ml-sub" id="masterSub">applies to all apps</div>
+      </div>
+      <div class="big-toggle on" id="masterToggle" onclick="toggleMaster()"></div>
+    </div>
+  </div>
+
+  <!-- STATUS + BADGE ROW -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px;">
+    <div class="badge active" id="statusBadge"><div class="pip"></div><span id="statusText">Active — monitoring all applications</span></div>
+    <div style="font-family:var(--mono);font-size:.65rem;color:var(--t3);" id="clockEl"></div>
+  </div>
+
+  <!-- NOTICE: how it actually works -->
+  <div class="notice">
+    <div class="notice-icon">ℹ️</div>
+    <div>
+      <strong>How this works:</strong> The master toggle above starts/stops the background Python process (<code>main.py</code>).
+      Each feature toggle below sends a config flag — <strong>one change affects every application</strong> on your system simultaneously,
+      because the listener hooks into the global keyboard at the OS level via <code>pynput</code>.
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="section-title">Session Statistics</div>
+  <div class="stats-grid">
+    <div class="stat"><div class="stat-val green" id="sTotal">0</div><div class="stat-label">TOTAL FIXED</div></div>
+    <div class="stat"><div class="stat-val" id="sSpell">0</div><div class="stat-label">SPELLING</div></div>
+    <div class="stat"><div class="stat-val" id="sGrammar">0</div><div class="stat-label">GRAMMAR</div></div>
+    <div class="stat"><div class="stat-val amber" id="sLatency">&#8212;<sub>ms</sub></div><div class="stat-label">AVG LATENCY</div></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="section-title">Feature Toggles <span style="font-size:.6rem;color:var(--t3);font-weight:400;letter-spacing:.04em;">&nbsp;— each applies system-wide</span></div>
+  <div class="card">
+    <div class="setting-row" id="row-spell">
+      <div class="setting-icon si-green">✦</div>
+      <div class="setting-text">
+        <div class="setting-name">Spell Correction</div>
+        <div class="setting-desc">Fix misspellings on Space · works in VS Code, Chrome, Word, anywhere</div>
+      </div>
+      <div class="toggle on" id="t-spell" onclick="featureToggle('spell', this)"></div>
+    </div>
+    <div class="setting-row" id="row-grammar">
+      <div class="setting-icon si-blue">◉</div>
+      <div class="setting-text">
+        <div class="setting-name">Grammar Correction</div>
+        <div class="setting-desc">Fix full sentence on Tab · rewrites directly in the active app</div>
+      </div>
+      <div class="toggle on" id="t-grammar" onclick="featureToggle('grammar', this)"></div>
+    </div>
+    <div class="setting-row" id="row-cap">
+      <div class="setting-icon si-amber">Aa</div>
+      <div class="setting-text">
+        <div class="setting-name">Auto-Capitalise</div>
+        <div class="setting-desc">Fix hELLO → Hello, ALL CAPS → lowercase</div>
+      </div>
+      <div class="toggle on" id="t-cap" onclick="featureToggle('cap', this)"></div>
+    </div>
+    <div class="setting-row" id="row-popup">
+      <div class="setting-icon si-violet">🔔</div>
+      <div class="setting-text">
+        <div class="setting-name">Show Notifications</div>
+        <div class="setting-desc">Bottom-right popup showing what was changed</div>
+      </div>
+      <div class="toggle on" id="t-popup" onclick="featureToggle('popup', this)"></div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-icon si-blue">⏱</div>
+      <div class="setting-text">
+        <div class="setting-name">Popup Duration</div>
+        <div class="setting-desc">How long the notification stays on screen</div>
+      </div>
+      <div class="slider-wrap">
+        <input type="range" class="setting-slider" min="1" max="10" step="0.5" value="4" oninput="updateDuration(this)"/>
+        <span class="slider-val" id="durVal">4s</span>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-icon si-violet">🤖</div>
+      <div class="setting-text">
+        <div class="setting-name">AI Model</div>
+        <div class="setting-desc">Groq model used for corrections</div>
+      </div>
+      <select class="setting-select" onchange="changeModel(this.value)">
+        <option value="llama3-8b-8192" selected>llama3-8b · fast</option>
+        <option value="llama3-70b-8192">llama3-70b · accurate</option>
+        <option value="mixtral-8x7b-32768">mixtral-8x7b</option>
+        <option value="gemma-7b-it">gemma-7b</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- TESTER + LOG side by side -->
+  <div class="section-title">Test &amp; Log</div>
+  <div class="row">
+    <!-- Tester -->
+    <div class="card">
+      <div class="card-head" style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02);">
+        <span style="font-size:.72rem;font-weight:600;color:var(--t2);">Live Tester</span>
+        <span style="font-size:.65rem;color:var(--t3);font-family:var(--mono);">Simulated input</span>
+      </div>
+      <div class="tester-wrap">
+        <div class="tester-hint">Type misspellings → press Space to spell-check · Tab for grammar</div>
+        <textarea id="tester" placeholder="teh quikc brwon fox… (Space to check)" oninput="onTI(this)" onkeydown="onTK(event)"></textarea>
+        <div class="tester-foot"><span>Space=spell · Tab=grammar</span><span id="charCount">0 chars</span></div>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02);">
+        <span style="font-size:.72rem;font-weight:600;color:var(--t2);">Correction Log</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:.65rem;color:var(--t3);font-family:var(--mono);" id="logCount">0 entries</span>
+          <button onclick="clearLog()" style="background:transparent;border:1px solid var(--line2);color:var(--t3);font-family:var(--mono);font-size:.62rem;padding:3px 9px;border-radius:4px;cursor:pointer;">clear</button>
+        </div>
+      </div>
+      <div class="log-scroll" id="logScroll">
+        <div class="log-empty" id="logEmpty">No corrections yet<span>type something in the tester or any app</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHORTCUTS -->
+  <div class="section-title">Keyboard Shortcuts</div>
+  <div class="card">
+    <div class="shortcut-grid">
+      <div class="sc-item"><span class="sc-label">Spell-check word</span><div class="sc-keys"><span class="k">Space</span></div></div>
+      <div class="sc-item"><span class="sc-label">Grammar-check sentence</span><div class="sc-keys"><span class="k">Tab</span></div></div>
+      <div class="sc-item"><span class="sc-label">Undo last correction</span><div class="sc-keys"><span class="k">Ctrl</span><span style="color:var(--t3);font-size:.6rem;margin:0 1px">+</span><span class="k">Z</span></div></div>
+      <div class="sc-item"><span class="sc-label">Pause / Resume all</span><div class="sc-keys"><span class="k">Ctrl</span><span style="color:var(--t3);font-size:.6rem;margin:0 1px">+</span><span class="k">Shift</span><span style="color:var(--t3);font-size:.6rem;margin:0 1px">+</span><span class="k">A</span></div></div>
+    </div>
+  </div>
+
+</div>
+<div class="toast-area" id="toasts"></div>
+
+<script>
+// ── GLOBAL STATE ──
+let masterOn = true;
+let features  = { spell:true, grammar:true, cap:true, popup:true };
+let counts    = { total:0, spell:0, grammar:0 };
+let latencies = [];
+let logCount  = 0;
+
+// Tester buffers
+let wordBuf = [], sentBuf = [];
+
+// ── SPELL DICTIONARY ──
+const DICT = {
+  teh:'the',hte:'the',recieve:'receive',seperate:'separate',occured:'occurred',
+  wiht:'with',taht:'that',yuor:'your',adn:'and',waht:'what',abotu:'about',
+  becuase:'because',woudl:'would',coudl:'could',shoudl:'should',liek:'like',
+  peopel:'people',alwyas:'always',evrey:'every',freind:'friend',beleive:'believe',
+  grammer:'grammar',knwo:'know',mroe:'more',quikc:'quick',brwon:'brown',
+  definately:'definitely',untill:'until',wierd:'weird',enviroment:'environment',
+  langauge:'language',necesary:'necessary',embarassment:'embarrassment',
+  accomodate:'accommodate',reccomend:'recommend',independance:'independence',
+  occassion:'occasion',priviledge:'privilege',pronounciation:'pronunciation',
+  goverment:'government',concious:'conscious',calender:'calendar',
+};
+function spellCheck(word) {
+  return DICT[word.toLowerCase().replace(/[^a-z]/g,'')] || null;
+}
+function capCheck(word) {
+  const letters = word.split('').filter(c => /[a-zA-Z]/.test(c));
+  if (letters.length < 2) return null;
+  const up = letters.filter(c => c === c.toUpperCase()).length;
+  const lo = letters.filter(c => c === c.toLowerCase()).length;
+  if (up === 0) return null;
+  if (word === word[0].toUpperCase() + word.slice(1).toLowerCase()) return null;
+  if (up === letters.length && letters.length <= 4) return null;
+  if (up > 1 && lo > 0) return word.toLowerCase();
+  return null;
+}
+function grammarCheck(s) {
+  let o = s.trim(); if (!o) return null;
+  let changed = false;
+  if (o[0] && o[0] !== o[0].toUpperCase()) { o = o[0].toUpperCase()+o.slice(1); changed = true; }
+  o = o.replace(/i/g, () => { changed = true; return 'I'; });
+  const fixes = {dont:"don't",cant:"can't",wont:"won't",im:"I'm",ive:"I've",
+    ill:"I'll",youre:"you're",theyre:"they're",isnt:"isn't",wasnt:"wasn't",
+    havent:"haven't",doesnt:"doesn't",wouldnt:"wouldn't",couldnt:"couldn't"};
+  Object.entries(fixes).forEach(([b,g]) => {
+    if (new RegExp('\b'+b+'\b','gi').test(o)) { o = o.replace(new RegExp('\b'+b+'\b','gi'), g); changed = true; }
+  });
+  if (!/[.!?]$/.test(o)) { o += '.'; changed = true; }
+  return changed ? o : null;
+}
+
+// ── MASTER TOGGLE ──
+function toggleMaster() {
+  masterOn = !masterOn;
+  const tog = document.getElementById('masterToggle');
+  const badge = document.getElementById('statusBadge');
+  const statusText = document.getElementById('statusText');
+  const sub = document.getElementById('masterSub');
+
+  tog.classList.toggle('on', masterOn);
+
+  // Dim all feature rows
+  document.querySelectorAll('.setting-row[id]').forEach(row => {
+    row.classList.toggle('disabled', !masterOn);
+  });
+
+  if (masterOn) {
+    badge.className = 'badge active';
+    badge.innerHTML = '<div class="pip"></div><span id="statusText">Active — monitoring all applications</span>';
+    sub.textContent = 'applies to all apps';
+    toast('Autocorrect enabled — now active in all apps', 'ok');
+  } else {
+    badge.className = 'badge paused';
+    badge.innerHTML = '<div class="pip"></div><span id="statusText">Paused — no corrections firing</span>';
+    sub.textContent = 'click to resume';
+    toast('Autocorrect paused — no corrections will fire', 'wrn');
+  }
+}
+
+// ── FEATURE TOGGLE ──
+function featureToggle(key, el) {
+  el.classList.toggle('on');
+  features[key] = el.classList.contains('on');
+  const labels = { spell:'Spell correction', grammar:'Grammar correction', cap:'Auto-capitalise', popup:'Notifications' };
+  toast(labels[key] + ' ' + (features[key] ? 'on' : 'off') + ' — applies to all apps', features[key] ? 'ok' : 'wrn');
+}
+
+function updateDuration(el) {
+  document.getElementById('durVal').textContent = el.value + 's';
+}
+
+function changeModel(v) {
+  toast('Model set to ' + v + ' — all apps', 'ok');
+}
+
+// ── TESTER ──
+function onTI(el) {
+  document.getElementById('charCount').textContent = el.value.length + ' chars';
+}
+function onTK(ev) {
+  if (!masterOn) return;
+  const el = ev.target;
+
+  if (ev.key === ' ') {
+    const word = wordBuf.join('').trim();
+    wordBuf = [];
+    if (!word) { sentBuf.push(word); return; }
+    sentBuf.push(word);
+    const capF = features.cap ? capCheck(word) : null;
+    const working = capF || word;
+    const spF = features.spell ? spellCheck(working) : null;
+    const final = spF || capF;
+    if (final && final !== word) {
+      const type = spF ? 'spell' : 'cap';
+      setTimeout(() => {
+        const txt = el.value, ws = word + ' ', idx = txt.lastIndexOf(ws);
+        if (idx !== -1) {
+          el.value = txt.slice(0,idx) + final + ' ' + txt.slice(idx+ws.length);
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+        addCorrection(type, word, final, 'Tester');
+      }, 50);
+    }
+    return;
+  }
+
+  if (ev.key === 'Tab') {
+    ev.preventDefault();
+    if (!features.grammar) return;
+    const full = [...sentBuf, wordBuf.join('')].join(' ').trim();
+    if (!full) return;
+    const fixed = grammarCheck(full);
+    if (fixed && fixed !== full) {
+      setTimeout(() => {
+        const txt = el.value, idx = txt.lastIndexOf(full);
+        if (idx !== -1) {
+          el.value = txt.slice(0,idx) + fixed + txt.slice(idx+full.length);
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+        sentBuf = []; wordBuf = [];
+        addCorrection('grammar', full, fixed, 'Tester');
+      }, 60);
+    }
+    return;
+  }
+
+  if (ev.key === 'Backspace') { if (wordBuf.length) wordBuf.pop(); return; }
+  if (ev.key.length === 1) wordBuf.push(ev.key);
+}
+
+// ── LOG ──
+function addCorrection(type, before, after, app) {
+  counts.total++;
+  if (type === 'spell' || type === 'cap') counts.spell++;
+  if (type === 'grammar') counts.grammar++;
+  updateStats();
+  addLogEntry(type, before, after, app);
+  simulateLatency();
+  toast((type==='spell'?'Spell':'type'==='cap'?'Cap':'Grammar')+': '+truncate(before)+' → '+truncate(after), 'ok');
+}
+
+function truncate(s, n=24) { return s.length > n ? s.slice(0,n)+'...' : s; }
+
+const TYPE_LABEL = { spell:'SP', grammar:'GR', cap:'CA' };
+
+function addLogEntry(type, before, after, app) {
+  const scroll = document.getElementById('logScroll');
+  document.getElementById('logEmpty')?.remove();
+  logCount++;
+  const time = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML =
+    '<div class="log-type '+(type==='grammar'?'gr':type==='cap'?'ca':'sp')+'">'+TYPE_LABEL[type]+'</div>' +
+    '<span class="log-before">'+esc(before)+'</span>' +
+    '<span class="log-arrow">&rarr;</span>' +
+    '<span class="log-after">'+esc(after)+'</span>' +
+    '<span class="log-meta">'+app+' &middot; '+time+'</span>';
+  scroll.prepend(entry);
+  const entries = scroll.querySelectorAll('.log-entry');
+  if (entries.length > 60) entries[entries.length-1].remove();
+  document.getElementById('logCount').textContent = logCount + ' entries';
+}
+
+function clearLog() {
+  document.getElementById('logScroll').innerHTML = '<div class="log-empty" id="logEmpty">Log cleared<span>waiting for next correction</span></div>';
+  logCount = 0;
+  document.getElementById('logCount').textContent = '0 entries';
+}
+
+// ── STATS ──
+function animNum(el, target) {
+  let cur = parseInt(el.textContent) || 0;
+  if (cur === target) return;
+  const step = () => { cur += Math.ceil((target-cur)*.25); el.textContent = cur; if (cur < target) requestAnimationFrame(step); else el.textContent = target; };
+  requestAnimationFrame(step);
+}
+function updateStats() {
+  animNum(document.getElementById('sTotal'), counts.total);
+  animNum(document.getElementById('sSpell'), counts.spell);
+  animNum(document.getElementById('sGrammar'), counts.grammar);
+}
+function simulateLatency() {
+  const l = 80 + Math.random() * 150;
+  latencies.push(l);
+  if (latencies.length > 20) latencies.shift();
+  const avg = Math.round(latencies.reduce((a,b)=>a+b,0)/latencies.length);
+  document.getElementById('sLatency').innerHTML = avg + '<sub>ms</sub>';
+}
+
+// ── CLOCK ──
+function tick() {
+  const n = new Date();
+  document.getElementById('clockEl').textContent =
+    n.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+tick(); setInterval(tick, 1000);
+
+// ── TOAST ──
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toast(msg, kind='ok') {
+  const area = document.getElementById('toasts');
+  const d = document.createElement('div');
+  d.className = 'toast ' + kind;
+  d.innerHTML = '<div class="t-dot"></div><span>' + esc(msg) + '</span>';
+  area.appendChild(d);
+  setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 180); }, 2600);
+}
+
+// ── DEMO: simulate corrections coming in ──
+const DEMO_DATA = [
+  {type:'spell',before:'recieve',after:'receive',app:'VS Code'},
+  {type:'grammar',before:'i went to the store',after:'I went to the store.',app:'Gmail'},
+  {type:'cap',before:'hELLO world',after:'hello world',app:'Slack'},
+  {type:'spell',before:'seperate',after:'separate',app:'Word'},
+  {type:'grammar',before:"she dont know",after:"She doesn't know.",app:'WhatsApp'},
+  {type:'spell',before:'definately',after:'definitely',app:'Notion'},
+  {type:'grammar',before:'can you helps me',after:'Can you help me?',app:'Chrome'},
+  {type:'spell',before:'wierd',after:'weird',app:'Discord'},
+  {type:'grammar',before:'the cats is hungry',after:'The cats are hungry.',app:'Telegram'},
+  {type:'spell',before:'enviroment',after:'environment',app:'VS Code'},
+];
+let demoIdx = 0;
+function runDemo() {
+  if (masterOn) {
+    const e = DEMO_DATA[demoIdx % DEMO_DATA.length]; demoIdx++;
+    addCorrection(e.type, e.before, e.after, e.app);
+  }
+  setTimeout(runDemo, 2800 + Math.random() * 4000);
+}
+setTimeout(runDemo, 1500);
+</script>
+</body>
+</html>
